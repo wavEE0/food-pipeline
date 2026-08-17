@@ -2,7 +2,7 @@
   {
     "number": 1,
     "message": "initial project setup - requirements, gitignore, env example",
-    "status": "pending",
+    "status": "done",
     "files": {
       "requirements.txt": "cmVxdWVzdHM9PTIuMzEuMApwc3ljb3BnMi1iaW5hcnk9PTIuOS45CnB5dGhvbi1kb3RlbnY9PTEuMC4wCnB5dGVzdD09Ny40LjAKcHl0ZXN0LW1vY2s9PTMuMTEuMAo=",
       ".gitignore": "LmVudgpfX3B5Y2FjaGVfXy8KKi5weWMKKi5weW8KLnB5dGVzdF9jYWNoZS8KbG9ncy8qLmxvZwoqLmVnZy1pbmZvLwpkaXN0LwpidWlsZC8KLkRTX1N0b3JlCnZlbnYvCi52ZW52Lwo=",
