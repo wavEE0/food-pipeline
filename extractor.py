@@ -2,31 +2,44 @@ import requests
 import config
 from logger import logger
 
-# the fields we actually want from the api - no point downloading everything
 FIELDS = 'code,product_name,nutriments,categories_tags'
 
 def fetch_products():
     """
     fetches products from open food facts api
-    yields lists of raw product dicts (one list per page)
+    yields one page of results at a time so we dont load everything into memory
 
-    NOTE: this is a basic version, only gets the first page
-    will add pagination later
+    stops when we get fewer results than the page size (means we hit the end)
     """
-    params = {
-        'fields': FIELDS,
-        'page_size': config.BATCH_SIZE,
-        'page': 1,
-        'json': 1,
-    }
+    page = 1
 
-    logger.info(f"fetching page 1 from open food facts")
-    response = requests.get(config.API_BASE_URL, params=params, timeout=30)
+    while True:
+        params = {
+            'fields': FIELDS,
+            'page_size': config.BATCH_SIZE,
+            'page': page,
+            'json': 1,
+        }
 
-    if response.status_code == 200:
-        data = response.json()
-        products = data.get('products', [])
-        logger.info(f"got {len(products)} products")
+        logger.info(f"fetching page {page}")
+        response = requests.get(config.API_BASE_URL, params=params, timeout=30)
+
+        if response.status_code != 200:
+            logger.error(f"api returned status {response.status_code} on page {page}, stopping")
+            break
+
+        products = response.json().get('products', [])
+        logger.info(f"page {page}: got {len(products)} products")
+
+        if not products:
+            logger.info("empty page, done fetching")
+            break
+
         yield products
-    else:
-        logger.error(f"api returned status {response.status_code}")
+
+        # if we got fewer than a full page, this was the last one
+        if len(products) < config.BATCH_SIZE:
+            logger.info("partial page, reached end of results")
+            break
+
+        page += 1
