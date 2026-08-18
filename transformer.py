@@ -1,15 +1,10 @@
 from logger import logger, error_logger
 
-# max sensible calorie value per 100g - anything over this is probably an error
-# pure fat is ~900 kcal/100g so 1000 gives a small buffer for weird edge cases
 MAX_CALORIES = 1000
 
 
 def _get_numeric(value):
-    """
-    safely converts a value to float
-    returns None if it cant be converted (better than crashing on bad data)
-    """
+    """safely converts a value to float, returns None if it cant"""
     if value is None:
         return None
     try:
@@ -18,31 +13,53 @@ def _get_numeric(value):
         return None
 
 
-def _transform_one(product):
+def _clean_category(raw_tags):
     """
-    transforms a single raw product - now with proper validation
-    returns None if the product fails validation
+    open food facts categories look like: ['en:beverages', 'en:soft-drinks']
+    we want: 'beverages' (first tag, strip prefix, readable)
+    """
+    if not raw_tags:
+        return None
+
+    first = raw_tags[0] if isinstance(raw_tags, list) else raw_tags
+
+    # strip language prefix (en:, fr:, etc.)
+    if ':' in first:
+        first = first.split(':', 1)[1]
+
+    # dashes to spaces, lowercase
+    return first.replace('-', ' ').lower()
+
+
+def _transform_one(product, seen_barcodes):
+    """
+    transforms and validates a single product
+    seen_barcodes is a set we use to catch duplicates within the same batch
+    returns None if rejected
     """
     barcode = product.get('code', '').strip()
     name = product.get('product_name', '').strip()
 
-    # cant store it without a barcode - its our unique key
     if not barcode:
         error_logger.warning(f"rejected: missing barcode - name={name!r}")
         return None
 
-    # no name is also a dealbreaker
     if not name:
         error_logger.warning(f"rejected: missing product_name - barcode={barcode!r}")
         return None
 
-    nutriments = product.get('nutriments', {})
+    # skip duplicates within this batch - loader handles cross-run dedup
+    if barcode in seen_barcodes:
+        error_logger.warning(f"rejected: duplicate barcode in batch - barcode={barcode}")
+        return None
 
+    seen_barcodes.add(barcode)
+
+    nutriments = product.get('nutriments', {})
     calories = _get_numeric(nutriments.get('energy-kcal_100g'))
 
-    # calories way out of range probably means bad data in the api
     if calories is not None and (calories < 0 or calories > MAX_CALORIES):
-        error_logger.warning(f"rejected: calories {calories} out of range - barcode={barcode}, name={name!r}")
+        error_logger.warning(f"rejected: calories {calories} out of range - barcode={barcode}")
         return None
 
     return {
@@ -54,20 +71,21 @@ def _transform_one(product):
         'fat': _get_numeric(nutriments.get('fat_100g')),
         'fibre': _get_numeric(nutriments.get('fiber_100g')),
         'sodium': _get_numeric(nutriments.get('sodium_100g')),
-        'category': None,
+        'category': _clean_category(product.get('categories_tags')),
     }
 
 
 def transform_batch(raw_products):
     """
-    transforms and validates a batch of raw products
+    transforms, validates, and deduplicates a batch of raw products
     returns (clean_records, rejected_count)
     """
+    seen_barcodes = set()
     results = []
     rejected = 0
 
     for product in raw_products:
-        result = _transform_one(product)
+        result = _transform_one(product, seen_barcodes)
         if result:
             results.append(result)
         else:
